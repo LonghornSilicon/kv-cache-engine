@@ -1,3 +1,54 @@
+# KV Cache Engine — TurboQuant+ datapath (RETIRED, archived)
+
+> ## ⚠️ This branch is archived. The TurboQuant+ codec was retired 2026-06-22.
+>
+> This `legacy/turboquant-plus` branch preserves the complete, working
+> TurboQuant+ implementation of the KVCE block as a historical record. **The
+> block itself is not retired** — it remains block 2 of the LonghornSilicon
+> accelerator — but the *codec it implements* has been replaced. Active
+> development continues on `master`, which revamps this same block to implement
+> **ChannelQuant** (per-channel-key INT4). See the post-mortem below.
+>
+> - Successor codec spec: `../channelquant/REVAMP_SPEC.md`
+> - Block revamp plan: `findings/channelquant_block_revamp.md` (on `master`)
+
+## Why we retired TurboQuant+
+
+TurboQuant+ (PolarQuant 3-bit Lloyd-Max + 1-bit QJL residual + Walsh–Hadamard
+rotation) is hardware-verified and hits its compression target (~3.5× combined,
+3.56× K / 4.92× V). **It does not hit that ratio losslessly on grouped-query
+attention (GQA), which is what modern models use.** Measured end-to-end on
+Qwen2-0.5B (HellaSwag acc_norm):
+
+| Config | PPL | HellaSwag acc_norm |
+|---|---|---|
+| FP16 baseline | 17.56 | 0.420 |
+| **TurboQuant+ turbo4 (this codec)** | **877.88** | **0.316** |
+
+That is **−0.10 acc_norm (a 25% relative accuracy collapse) and 50× worse PPL**
+at the compression ratio it advertised as near-lossless.
+
+**Root cause (established by the `c13`–`c19` study in
+`../adaptive-precision-attention` and `../channelquant`):** KV-cache quant error
+on GQA is dominated by a few **fixed, high-magnitude channels in the keys**. The
+TurboQuant+ rotation step *delocalizes* per-channel error across the whole
+vector, so no per-token protection can contain it, and naive scalar INT4 fails
+the same way (collapses to near-chance at 1.5B/7B). The fix is not a better
+vector codec or adaptive bit-routing — both were tried and ruled out — it is
+**scaling keys per-channel** (KIVI/KVQuant), which localizes the outliers. With
+per-channel-key INT4, 4-bit recovers to ~FP16 at every scale (7B: 0.604 vs
+0.612). That is the ChannelQuant codec now implemented on `master`.
+
+**What carries forward:** the block role, ACU handshake, SRAM/AXI scaffolding,
+the LibreLane/Cadence flow, and the 3-way (Python/C++/SV) parity harness are all
+reused. What is replaced is the internal datapath (rotation + QJL + Lloyd-Max →
+per-channel/per-token uniform INT4 + static outlier ROM).
+
+Everything below this line is the original TurboQuant+ documentation, retained
+unchanged for reference.
+
+---
+
 # KV Cache Engine
 
 A hardware-verified KV cache compression engine using
