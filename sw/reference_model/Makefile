@@ -15,11 +15,15 @@ CQ_HDR      := channelquant_ref.hpp
 CQ_TEST_SRC := test_channelquant_ref.cpp
 CQ_TEST_BIN := test_cq
 
+# RHT sign-register test (boot-loaded value sign vector) — no vendored vectors.
+SR_TEST_SRC := test_sign_register.cpp
+SR_TEST_BIN := test_signreg
+
 TV_DIR   := ../../rtl/tb/testvectors
 
-.PHONY: all test test-py test-cq test-all shared static clean testvectors
+.PHONY: all test test-py test-cq test-signreg test-all shared static clean testvectors
 
-all: $(TEST_BIN) $(CQ_TEST_BIN)
+all: $(TEST_BIN) $(CQ_TEST_BIN) $(SR_TEST_BIN)
 
 $(TEST_BIN): $(TEST_SRC) $(SRC) $(HDR)
 	$(CXX) $(CXXFLAGS) -o $@ $(TEST_SRC) $(SRC) -lm
@@ -35,10 +39,16 @@ $(CQ_TEST_BIN): $(CQ_TEST_SRC) $(CQ_SRC) $(CQ_HDR)
 test-cq: $(CQ_TEST_BIN)
 	./$(CQ_TEST_BIN)
 
+$(SR_TEST_BIN): $(SR_TEST_SRC) $(SRC) $(HDR)
+	$(CXX) $(CXXFLAGS) -o $@ $(SR_TEST_SRC) $(SRC) -lm
+
+test-signreg: $(SR_TEST_BIN)
+	./$(SR_TEST_BIN)
+
 test-py: testvectors
 	$(PYTHON) test_kv_cache_engine_ref.py
 
-test-all: test test-cq test-py
+test-all: test test-cq test-signreg test-py
 
 shared: $(LIB_SO)
 
@@ -58,4 +68,4 @@ testvectors:
 	fi
 
 clean:
-	rm -f $(TEST_BIN) $(CQ_TEST_BIN) $(LIB_SO) $(LIB_A) *.o
+	rm -f $(TEST_BIN) $(CQ_TEST_BIN) $(SR_TEST_BIN) $(LIB_SO) $(LIB_A) *.o

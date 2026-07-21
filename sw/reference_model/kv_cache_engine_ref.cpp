@@ -47,10 +47,17 @@ KVCacheEngine::KVCacheEngine(KVCacheEngineInfo info) : info_(info) {
     }
 
     sign_flips_.resize(info_.vector_dim);
-    LCG rng(info_.rotation_seed);
-    for (uint32_t i = 0; i < info_.vector_dim; i++) {
-        uint32_t bits = rng.next();
-        sign_flips_[i] = (bits & 1) == 0 ? 1 : -1;
+    if (!info_.sign_flips.empty()) {
+        // boot-loaded sign register: use the explicitly configured pattern
+        for (uint32_t i = 0; i < info_.vector_dim; i++)
+            sign_flips_[i] = info_.sign_flips[i];
+    } else {
+        // legacy: derive from rotation_seed (golden vectors unchanged)
+        LCG rng(info_.rotation_seed);
+        for (uint32_t i = 0; i < info_.vector_dim; i++) {
+            uint32_t bits = rng.next();
+            sign_flips_[i] = (bits & 1) == 0 ? 1 : -1;
+        }
     }
 
     qjl_matrix_.resize(info_.vector_dim);

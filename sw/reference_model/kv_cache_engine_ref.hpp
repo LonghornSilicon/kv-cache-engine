@@ -102,6 +102,13 @@ struct KVCacheEngineInfo {
     uint32_t coord_width    = 16;
     uint32_t coord_frac     = 12;
     uint32_t rotation_seed  = 42;
+    // RHT sign vector (one +/-1 per channel), modelling the boot-loaded sign
+    // register in front of the WHT on the value write path. Empty -> derive from
+    // rotation_seed (legacy, golden vectors unchanged). If set, length must ==
+    // vector_dim and all entries +/-1; all +1 == plain fixed Hadamard. This makes
+    // the pattern a runtime config (like the scorer weights), not a tape-out
+    // constant: the butterfly is committed either way, only the sign source moves.
+    std::vector<int8_t> sign_flips = {};
 
     uint32_t n() const { return vector_dim; }
 
@@ -139,6 +146,12 @@ struct KVCacheEngineInfo {
         assert(qjl_bits == 1);
         assert(norm_width >= 8);
         assert(coord_width >= 8);
+        if (!sign_flips.empty()) {
+            assert(sign_flips.size() == vector_dim &&
+                   "sign_flips length must equal vector_dim");
+            for (int8_t s : sign_flips)
+                assert((s == 1 || s == -1) && "sign_flips entries must be +/-1");
+        }
     }
 };
 
@@ -195,6 +208,9 @@ public:
     uint32_t occupancy() const { return occupancy_; }
     uint32_t tiles_compressed() const { return tiles_compressed_; }
     uint32_t tiles_decompressed() const { return tiles_decompressed_; }
+
+    // Active RHT sign register (loaded from info.sign_flips, or seed-derived).
+    const std::vector<int8_t>& sign_flips() const { return sign_flips_; }
 
 private:
     KVCacheEngineInfo info_;

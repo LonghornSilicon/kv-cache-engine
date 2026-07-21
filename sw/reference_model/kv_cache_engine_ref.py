@@ -179,6 +179,14 @@ class KVCacheEngineInfo:
     coord_width: int = 16
     coord_frac: int = 12
     rotation_seed: int = 42
+    # RHT sign vector, one +/-1 per channel, modelling the boot-loaded sign
+    # register in front of the WHT (value write path). None -> derive from
+    # rotation_seed (legacy, unchanged golden vectors). A list of +/-1 of length
+    # vector_dim is loaded directly; all +1 == plain fixed Hadamard. This makes
+    # the pattern a runtime config (like the scorer weights), not a tape-out
+    # constant: the WHT butterfly is committed either way, only the sign source
+    # differs. See docs -- validated fixed==randomized at n=4000 on Qwen2-1.5B.
+    sign_flips: Optional[List[int]] = None
 
     @property
     def n(self) -> int:
@@ -225,6 +233,12 @@ class KVCacheEngineInfo:
             f"only qjl_bits=1 supported in v0.1"
         assert self.norm_width >= 8
         assert self.coord_width >= 8
+        if self.sign_flips is not None:
+            assert len(self.sign_flips) == self.vector_dim, \
+                f"sign_flips must have length vector_dim={self.vector_dim}, " \
+                f"got {len(self.sign_flips)}"
+            assert all(s in (1, -1) for s in self.sign_flips), \
+                "sign_flips entries must all be +1 or -1"
 
 
 # ---------------------------------------------------------------------------
@@ -261,8 +275,12 @@ class KVCacheEngine:
             info.vector_dim, info.coord_frac, info.coord_width)
         self._boundaries = _compute_boundaries_fixed(
             info.vector_dim, info.coord_frac, info.coord_width)
-        self._sign_flips = _generate_sign_flips(
-            info.rotation_seed, info.vector_dim)
+        # boot-loaded sign register if configured, else derive from the seed
+        if info.sign_flips is not None:
+            self._sign_flips = list(info.sign_flips)
+        else:
+            self._sign_flips = _generate_sign_flips(
+                info.rotation_seed, info.vector_dim)
         self._qjl_matrix = _generate_qjl_matrix(
             info.rotation_seed, info.vector_dim)
         self._sqrt_pi_2 = _sqrt_pi_over_2_fixed(
